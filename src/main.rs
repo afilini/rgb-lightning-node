@@ -8,6 +8,7 @@ mod ldk;
 mod proxy;
 mod rgb;
 mod routes;
+mod swap;
 mod utils;
 
 #[cfg(test)]
@@ -31,9 +32,9 @@ use crate::routes::{
     address, asset_balance, backup, btc_balance, change_password, close_channel, connect_peer,
     create_utxos, decode_ln_invoice, decode_rgb_invoice, disconnect_peer, init, invoice_status,
     issue_asset, keysend, list_assets, list_channels, list_payments, list_peers, list_transactions,
-    list_transfers, list_unspents, ln_invoice, lock, network_info, node_info, open_channel,
+    list_transfers, list_unspents, ln_invoice, lock, network_info, node_info, open_colored_channel,
     refresh_transfers, restore, rgb_invoice, send_asset, send_btc, send_onion_message,
-    send_payment, shutdown, sign_message, unlock,
+    send_payment, shutdown, sign_message, unlock, open_channel, maker_init, taker, maker_execute
 };
 use crate::utils::{start_daemon, AppState, LOGS_DIR};
 
@@ -105,6 +106,7 @@ pub(crate) async fn app(args: LdkUserInfo) -> Result<(Router, Arc<AppState>), Ap
         .route("/lock", post(lock))
         .route("/networkinfo", get(network_info))
         .route("/nodeinfo", get(node_info))
+        .route("/opencoloredchannel", post(open_colored_channel))
         .route("/openchannel", post(open_channel))
         .route("/refreshtransfers", post(refresh_transfers))
         .route("/restore", post(restore))
@@ -116,6 +118,9 @@ pub(crate) async fn app(args: LdkUserInfo) -> Result<(Router, Arc<AppState>), Ap
         .route("/shutdown", post(shutdown))
         .route("/signmessage", post(sign_message))
         .route("/unlock", post(unlock))
+        .route("/makerinit", post(maker_init))
+        .route("/taker", post(taker))
+        .route("/makerexecute", post(maker_execute))
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(trace::DefaultMakeSpan::new().level(tracing::Level::INFO))

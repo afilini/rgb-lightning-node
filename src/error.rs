@@ -22,6 +22,9 @@ pub enum APIError {
     #[error("Cannot call other APIs while node is changing state")]
     ChangingState,
 
+    #[error("Expired")]
+    Expired,
+
     #[error("Failed closing channel: {0}")]
     FailedClosingChannel(String),
 
@@ -60,6 +63,9 @@ pub enum APIError {
 
     #[error("Invalid amount: {0}")]
     InvalidAmount(String),
+
+    #[error("Invalid argument: {0}")]
+    InvalidArgument(String),
 
     #[error("Invalid asset ID: {0}")]
     InvalidAssetID(String),
@@ -100,6 +106,9 @@ pub enum APIError {
     #[error("Invalid pubkey")]
     InvalidPubkey,
 
+    #[error("Invalid swap string: {0}")]
+    InvalidSwapString(String),
+
     #[error("Invalid ticker: {0}")]
     InvalidTicker(String),
 
@@ -120,6 +129,9 @@ pub enum APIError {
 
     #[error("No uncolored UTXOs are available (hint: call createutxos)")]
     NoAvailableUtxos,
+
+    #[error("No route found")]
+    NoRoute,
 
     #[error("Wallet has not been initialized (hint: call init)")]
     NotInitialized,
@@ -169,10 +181,13 @@ impl IntoResponse for APIError {
             | APIError::FailedSendingOnionMessage(_)
             | APIError::FailedStartingLDK(_)
             | APIError::IO(_)
+            | APIError::NoRoute
             | APIError::Proxy(_)
             | APIError::Unexpected => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
             APIError::AnchorsRequired
+            | APIError::Expired
             | APIError::InvalidAmount(_)
+            | APIError::InvalidArgument(_)
             | APIError::InvalidAssetID(_)
             | APIError::InvalidBackupPath
             | APIError::InvalidBlindedUTXO(_)
@@ -186,6 +201,7 @@ impl IntoResponse for APIError {
             | APIError::InvalidPeerInfo(_)
             | APIError::InvalidPrecision(_)
             | APIError::InvalidPubkey
+            | APIError::InvalidSwapString(_)
             | APIError::InvalidTicker(_)
             | APIError::InvalidTlvType(_)
             | APIError::InvalidTransportEndpoints(_)

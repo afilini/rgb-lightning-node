@@ -441,7 +441,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/NodeInfoResponse'
-  /openchannel:
+  /opencoloredchannel:
     post:
       tags:
         - Channels
@@ -451,7 +451,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/OpenChannelRequest'
+              $ref: '#/components/schemas/OpenColoredChannelRequest'
       responses:
         '200':
           description: Successful operation
@@ -1076,7 +1076,7 @@ components:
         num_peers:
           type: integer
           example: 1
-    OpenChannelRequest:
+    OpenColoredChannelRequest:
       type: object
       properties:
         peer_pubkey_and_addr:
@@ -1094,6 +1094,24 @@ components:
         asset_id:
           type: string
           example: rgb:2dkSTbr-jFhznbPmo-TQafzswCN-av4gTsJjX-ttx6CNou5-M98k8Zd
+        public:
+          type: boolean
+          example: true
+        with_anchors:
+          type: boolean
+          example: true
+    OpenChannelRequest:
+      type: object
+      properties:
+        peer_pubkey_and_addr:
+          type: string
+          example: 03b79a4bc1ec365524b4fab9a39eb133753646babb5a1da5c4bc94c53110b7795d@localhost:9736
+        capacity_sat:
+          type: integer
+          example: 30010
+        push_msat:
+          type: integer
+          example: 1394000
         public:
           type: boolean
           example: true

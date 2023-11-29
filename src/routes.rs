@@ -369,6 +369,35 @@ pub(crate) struct LNInvoiceResponse {
 }
 
 #[derive(Deserialize, Serialize)]
+pub(crate) struct MakerExecuteRequest {
+    pub(crate) swapstring: String,
+    pub(crate) payment_secret: String,
+    pub(crate) taker_pubkey: String,
+}
+
+#[derive(Deserialize, Serialize)]
+pub(crate) enum MakerInitSide {
+    Buy,
+    Sell,
+}
+
+#[derive(Deserialize, Serialize)]
+pub(crate) struct MakerInitRequest {
+    pub(crate) amount: u64,
+    pub(crate) asset_id: String,
+    pub(crate) side: MakerInitSide,
+    pub(crate) timeout_secs: u32,
+    pub(crate) price_msats_per_token: u64,
+}
+
+#[derive(Deserialize, Serialize)]
+pub(crate) struct MakerInitResponse {
+    pub(crate) payment_hash: String,
+    pub(crate) payment_secret: String,
+    pub(crate) swapstring: String,
+}
+
+#[derive(Deserialize, Serialize)]
 pub(crate) struct NetworkInfoResponse {
     pub(crate) network: BitcoinNetwork,
     pub(crate) height: u32,
@@ -505,6 +534,33 @@ pub(crate) struct SignMessageResponse {
     pub(crate) signed_message: String,
 }
 
+#[derive(Deserialize, Serialize)]
+pub(crate) struct TakerRequest {
+    pub(crate) swapstring: String,
+}
+
+#[derive(Deserialize, Serialize)]
+pub(crate) struct TakerResponse {
+    pub(crate) our_pubkey: String,
+}
+
+#[derive(Deserialize, Serialize)]
+pub(crate) struct TradesListRequest {}
+
+#[derive(Deserialize, Serialize)]
+pub(crate) struct TradeEntry {
+    pub(crate) amount: u64,
+    pub(crate) asset_id: String,
+    pub(crate) side: MakerInitSide,
+    pub(crate) price_msas_per_token: u64,
+}
+
+#[derive(Deserialize, Serialize)]
+pub(crate) struct TradeListResponse {
+    pub(crate) taker: Vec<TradeEntry>,
+    pub(crate) maker: Vec<TradeEntry>,
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct Transaction {
     pub(crate) transaction_type: TransactionType,
@@ -583,62 +639,6 @@ pub(crate) struct Utxo {
     pub(crate) outpoint: String,
     pub(crate) btc_amount: u64,
     pub(crate) colorable: bool,
-}
-
-#[derive(Deserialize, Serialize)]
-pub(crate) enum MakerInitSide {
-    Buy,
-    Sell,
-}
-
-#[derive(Deserialize, Serialize)]
-pub(crate) struct MakerInitRequest {
-    pub(crate) amount: u64,
-    pub(crate) asset_id: String,
-    pub(crate) side: MakerInitSide,
-    pub(crate) timeout_secs: u32,
-    pub(crate) price_msats_per_token: u64,
-}
-
-#[derive(Deserialize, Serialize, Debug)]
-pub(crate) struct MakerInitResponse {
-    pub(crate) payment_hash: String,
-    pub(crate) payment_secret: String,
-    pub(crate) swapstring: String,
-}
-
-#[derive(Deserialize, Serialize)]
-pub(crate) struct TakerRequest {
-    pub(crate) swapstring: String,
-}
-
-#[derive(Deserialize, Serialize, Debug)]
-pub(crate) struct TakerResponse {
-    pub(crate) our_pubkey: String,
-}
-
-#[derive(Deserialize, Serialize)]
-pub(crate) struct TradesListRequest {}
-
-#[derive(Deserialize, Serialize)]
-pub(crate) struct TradeEntry {
-    pub(crate) amount: u64,
-    pub(crate) asset_id: String,
-    pub(crate) side: MakerInitSide,
-    pub(crate) price_msas_per_token: u64,
-}
-
-#[derive(Deserialize, Serialize)]
-pub(crate) struct TradeListResponse {
-    pub(crate) taker: Vec<TradeEntry>,
-    pub(crate) maker: Vec<TradeEntry>,
-}
-
-#[derive(Deserialize, Serialize)]
-pub(crate) struct MakerExecuteRequest {
-    pub(crate) swapstring: String,
-    pub(crate) payment_secret: String,
-    pub(crate) taker_pubkey: String,
 }
 
 impl AppState {

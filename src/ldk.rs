@@ -23,13 +23,13 @@ use lightning::ln::peer_handler::{IgnoringMessageHandler, MessageHandler, Simple
 use lightning::ln::{ChannelId, PaymentHash, PaymentPreimage, PaymentSecret};
 use lightning::onion_message::{DefaultMessageRouter, SimpleArcOnionMessenger};
 use lightning::rgb_utils::{
-    get_rgb_channel_info, get_rgb_runtime, read_rgb_transfer_info, STATIC_BLINDING,
-    WALLET_FINGERPRINT_FNAME, is_channel_rgb,
+    get_rgb_channel_info, get_rgb_runtime, is_channel_rgb, read_rgb_transfer_info, STATIC_BLINDING,
+    WALLET_FINGERPRINT_FNAME,
 };
 use lightning::routing::gossip;
 use lightning::routing::gossip::{NodeId, P2PGossipSync};
 use lightning::routing::router::DefaultRouter;
-use lightning::routing::scoring::{ProbabilisticScoringFeeParameters, ProbabilisticScorer};
+use lightning::routing::scoring::{ProbabilisticScorer, ProbabilisticScoringFeeParameters};
 use lightning::sign::{
     DelayedPaymentOutputDescriptor, EntropySource, InMemorySigner, KeysManager,
     SpendableOutputDescriptor,
@@ -256,7 +256,13 @@ pub(crate) type PeerManager = SimpleArcPeerManager<
 
 pub(crate) type Scorer = ProbabilisticScorer<Arc<NetworkGraph>, Arc<FilesystemLogger>>;
 
-pub(crate) type Router = DefaultRouter<Arc<NetworkGraph>, Arc<FilesystemLogger>, Arc<RwLock<Scorer>>, ProbabilisticScoringFeeParameters, Scorer>;
+pub(crate) type Router = DefaultRouter<
+    Arc<NetworkGraph>,
+    Arc<FilesystemLogger>,
+    Arc<RwLock<Scorer>>,
+    ProbabilisticScoringFeeParameters,
+    Scorer,
+>;
 
 pub(crate) type ChannelManager =
     SimpleArcChannelManager<ChainMonitor, BitcoindClient, BitcoindClient, FilesystemLogger>;
@@ -298,7 +304,10 @@ async fn handle_ldk_events(
             .expect("Lightning funding tx should always be to a SegWit output");
             let script_buf = ScriptBuf::from_bytes(addr.to_scriptpubkey());
 
-            let is_colored = is_channel_rgb(&temporary_channel_id, &PathBuf::from(&static_state.ldk_data_dir));
+            let is_colored = is_channel_rgb(
+                &temporary_channel_id,
+                &PathBuf::from(&static_state.ldk_data_dir),
+            );
             let funding_tx = if is_colored {
                 let (rgb_info, _) = get_rgb_channel_info(
                     &temporary_channel_id,
@@ -362,7 +371,9 @@ async fn handle_ldk_events(
 
                 funding_tx
             } else {
-                let unsigned_psbt = unlocked_state.rgb_send_btc_begin(addr.to_address(), channel_value_satoshis, FEE_RATE).unwrap();
+                let unsigned_psbt = unlocked_state
+                    .rgb_send_btc_begin(addr.to_address(), channel_value_satoshis, FEE_RATE)
+                    .unwrap();
                 let signed_psbt = unlocked_state.rgb_sign_psbt(unsigned_psbt).unwrap();
 
                 let psbt = BdkPsbt::from_str(&signed_psbt).unwrap();
@@ -657,17 +668,18 @@ async fn handle_ldk_events(
 
                 let state_copy = unlocked_state.clone();
                 let psbt_str_copy = psbt_str.clone();
-                let _txid = if is_channel_rgb(&channel_id, &PathBuf::from(&static_state.ldk_data_dir)) {
-                    tokio::task::spawn_blocking(move || {
-                        state_copy.rgb_send_end(psbt_str_copy).unwrap()
-                    })
-                } else {
-                    tokio::task::spawn_blocking(move || {
-                        state_copy.rgb_send_btc_end(psbt_str_copy).unwrap()
-                    })
-                }
-                .await
-                .unwrap();
+                let _txid =
+                    if is_channel_rgb(&channel_id, &PathBuf::from(&static_state.ldk_data_dir)) {
+                        tokio::task::spawn_blocking(move || {
+                            state_copy.rgb_send_end(psbt_str_copy).unwrap()
+                        })
+                    } else {
+                        tokio::task::spawn_blocking(move || {
+                            state_copy.rgb_send_btc_end(psbt_str_copy).unwrap()
+                        })
+                    }
+                    .await
+                    .unwrap();
             } else {
                 // acceptor
                 let consignment_path =
@@ -678,7 +690,11 @@ async fn handle_ldk_events(
                     let asset_schema = AssetSchema::from_schema_id(schema_id).unwrap();
                     let mut runtime = get_rgb_runtime(Path::new(&static_state.ldk_data_dir));
 
-                    match unlocked_state.rgb_save_new_asset(&mut runtime, &asset_schema, contract_id) {
+                    match unlocked_state.rgb_save_new_asset(
+                        &mut runtime,
+                        &asset_schema,
+                        contract_id,
+                    ) {
                         Ok(_) => {}
                         Err(e) if e.to_string().contains("UNIQUE constraint failed") => {}
                         Err(e) => panic!("Failed saving asset: {}", e),
@@ -726,22 +742,26 @@ async fn handle_ldk_events(
             // the funding transaction either confirms, or this event is generated.
         }
         Event::HTLCIntercepted {
-			is_swap,
-			payment_hash,
-			intercept_id,
-			inbound_amount_msat,
-			expected_outbound_amount_msat,
-			inbound_rgb_amount,
-			expected_outbound_rgb_amount,
-			requested_next_hop_scid,
-			prev_short_channel_id,
-		} => {
-			if !is_swap {
-				unlocked_state.channel_manager.fail_intercepted_htlc(intercept_id).unwrap();
-			}
+            is_swap,
+            payment_hash,
+            intercept_id,
+            inbound_amount_msat,
+            expected_outbound_amount_msat,
+            inbound_rgb_amount,
+            expected_outbound_rgb_amount,
+            requested_next_hop_scid,
+            prev_short_channel_id,
+        } => {
+            if !is_swap {
+                unlocked_state
+                    .channel_manager
+                    .fail_intercepted_htlc(intercept_id)
+                    .unwrap();
+            }
 
             let get_rgb_info = |channel_id| {
-                let is_colored = is_channel_rgb(channel_id, &PathBuf::from(&static_state.ldk_data_dir));
+                let is_colored =
+                    is_channel_rgb(channel_id, &PathBuf::from(&static_state.ldk_data_dir));
                 if is_colored {
                     let (rgb_info, _) = get_rgb_channel_info(
                         channel_id,
@@ -757,79 +777,102 @@ async fn handle_ldk_events(
                 }
             };
 
-			let inbound_channel = unlocked_state.channel_manager
-				.list_channels()
-				.into_iter()
-				.find(|details| details.short_channel_id == Some(prev_short_channel_id))
-				.expect("Should always be a valid channel");
-			let outbound_channel = unlocked_state.channel_manager
-				.list_channels()
-				.into_iter()
-				.find(|details| details.short_channel_id == Some(requested_next_hop_scid))
-				.expect("Should always be a valid channel");
+            let inbound_channel = unlocked_state
+                .channel_manager
+                .list_channels()
+                .into_iter()
+                .find(|details| details.short_channel_id == Some(prev_short_channel_id))
+                .expect("Should always be a valid channel");
+            let outbound_channel = unlocked_state
+                .channel_manager
+                .list_channels()
+                .into_iter()
+                .find(|details| details.short_channel_id == Some(requested_next_hop_scid))
+                .expect("Should always be a valid channel");
 
-			let inbound_rgb_info = get_rgb_info(&inbound_channel.channel_id);
-			let outbound_rgb_info = get_rgb_info(&outbound_channel.channel_id);
+            let inbound_rgb_info = get_rgb_info(&inbound_channel.channel_id);
+            let outbound_rgb_info = get_rgb_info(&outbound_channel.channel_id);
 
-			println!("EVENT: Requested swap with params inbound_msat={} outbound_msat={} inbound_rgb={:?} outbound_rgb={:?} inbound_contract_id={:?}, outbound_contract_id={:?}", inbound_amount_msat, expected_outbound_amount_msat, inbound_rgb_amount, expected_outbound_rgb_amount, inbound_rgb_info.map(|i| i.0), outbound_rgb_info.map(|i| i.0));
+            tracing::debug!("EVENT: Requested swap with params inbound_msat={} outbound_msat={} inbound_rgb={:?} outbound_rgb={:?} inbound_contract_id={:?}, outbound_contract_id={:?}", inbound_amount_msat, expected_outbound_amount_msat, inbound_rgb_amount, expected_outbound_rgb_amount, inbound_rgb_info.map(|i| i.0), outbound_rgb_info.map(|i| i.0));
 
-			let mut trades_lock = unlocked_state.taker_trades.lock().unwrap();
-			let (whitelist_contract_id, whitelist_swap_type) = match trades_lock.get(&payment_hash)
-			{
-				None => {
-					println!("ERROR: rejecting non-whitelisted swap");
-					unlocked_state.channel_manager.fail_intercepted_htlc(intercept_id).unwrap();
-					return;
-				}
-				Some(x) => x,
-			};
+            let mut trades_lock = unlocked_state.taker_trades.lock().unwrap();
+            let (whitelist_contract_id, whitelist_swap_type) = match trades_lock.get(&payment_hash)
+            {
+                None => {
+                    tracing::error!("ERROR: rejecting non-whitelisted swap");
+                    unlocked_state
+                        .channel_manager
+                        .fail_intercepted_htlc(intercept_id)
+                        .unwrap();
+                    return;
+                }
+                Some(x) => x,
+            };
 
-			match whitelist_swap_type {
-				crate::swap::SwapType::BuyAsset { amount_rgb, amount_msats } => {
-					// We subtract HTLC_MIN_MSAT because a node receiving an RGB payment also receives that amount of sats with it as the payment amount,
-					// so we exclude it from the calculation of how many sats we are effectively giving out.
-					let net_msat_diff = (expected_outbound_amount_msat)
-						.saturating_sub(inbound_amount_msat.saturating_sub(crate::routes::HTLC_MIN_MSAT));
+            match whitelist_swap_type {
+                crate::swap::SwapType::BuyAsset {
+                    amount_rgb,
+                    amount_msats,
+                } => {
+                    // We subtract HTLC_MIN_MSAT because a node receiving an RGB payment also receives that amount of sats with it as the payment amount,
+                    // so we exclude it from the calculation of how many sats we are effectively giving out.
+                    let net_msat_diff = (expected_outbound_amount_msat).saturating_sub(
+                        inbound_amount_msat.saturating_sub(crate::routes::HTLC_MIN_MSAT),
+                    );
 
-					if inbound_rgb_amount != Some(*amount_rgb)
-						|| inbound_rgb_info.map(|x| x.0) != Some(*whitelist_contract_id)
-						|| net_msat_diff != *amount_msats
-						|| outbound_rgb_info.is_some()
-					{
-						println!("ERROR: swap doesn't match the whitelisted info, rejecting it");
-						unlocked_state.channel_manager.fail_intercepted_htlc(intercept_id).unwrap();
-						return;
-					}
-				}
-				crate::swap::SwapType::SellAsset { amount_rgb, amount_msats } => {
-					let net_msat_diff =
-						inbound_amount_msat.saturating_sub(expected_outbound_amount_msat);
+                    if inbound_rgb_amount != Some(*amount_rgb)
+                        || inbound_rgb_info.map(|x| x.0) != Some(*whitelist_contract_id)
+                        || net_msat_diff != *amount_msats
+                        || outbound_rgb_info.is_some()
+                    {
+                        tracing::error!(
+                            "ERROR: swap doesn't match the whitelisted info, rejecting it"
+                        );
+                        unlocked_state
+                            .channel_manager
+                            .fail_intercepted_htlc(intercept_id)
+                            .unwrap();
+                        return;
+                    }
+                }
+                crate::swap::SwapType::SellAsset {
+                    amount_rgb,
+                    amount_msats,
+                } => {
+                    let net_msat_diff =
+                        inbound_amount_msat.saturating_sub(expected_outbound_amount_msat);
 
-					if expected_outbound_rgb_amount != Some(*amount_rgb)
-						|| outbound_rgb_info.map(|x| x.0) != Some(*whitelist_contract_id)
-						|| net_msat_diff != *amount_msats
-						|| inbound_rgb_info.is_some()
-					{
-						println!("ERROR: swap doesn't match the whitelisted info, rejecting it");
-						unlocked_state.channel_manager.fail_intercepted_htlc(intercept_id).unwrap();
-						return;
-					}
-				}
-			}
+                    if expected_outbound_rgb_amount != Some(*amount_rgb)
+                        || outbound_rgb_info.map(|x| x.0) != Some(*whitelist_contract_id)
+                        || net_msat_diff != *amount_msats
+                        || inbound_rgb_info.is_some()
+                    {
+                        tracing::error!(
+                            "ERROR: swap doesn't match the whitelisted info, rejecting it"
+                        );
+                        unlocked_state
+                            .channel_manager
+                            .fail_intercepted_htlc(intercept_id)
+                            .unwrap();
+                        return;
+                    }
+                }
+            }
 
-			println!("Swap is whitelisted, forwarding the htlc...");
-			trades_lock.remove(&payment_hash);
+            tracing::debug!("Swap is whitelisted, forwarding the htlc...");
+            trades_lock.remove(&payment_hash);
 
-			unlocked_state.channel_manager
-				.forward_intercepted_htlc(
-					intercept_id,
-					channelmanager::NextHopForward::ShortChannelId(requested_next_hop_scid),
+            unlocked_state
+                .channel_manager
+                .forward_intercepted_htlc(
+                    intercept_id,
+                    channelmanager::NextHopForward::ShortChannelId(requested_next_hop_scid),
                     outbound_channel.counterparty.node_id,
-					expected_outbound_amount_msat,
-					expected_outbound_rgb_amount,
-				)
-				.expect("Forward should be valid");
-		}
+                    expected_outbound_amount_msat,
+                    expected_outbound_rgb_amount,
+                )
+                .expect("Forward should be valid");
+        }
         Event::BumpTransaction(event) => unlocked_state.bump_tx_event_handler.handle_event(&event),
     }
 }

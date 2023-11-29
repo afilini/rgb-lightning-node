@@ -46,7 +46,8 @@ async fn open_after_double_send() {
     assert_eq!(asset_balance(node1_addr, &asset_id).await, 700);
     assert_eq!(asset_balance(node2_addr, &asset_id).await, 300);
 
-    let channel = open_colored_channel(node2_addr, &node1_pubkey, NODE1_PEER_PORT, 250, &asset_id).await;
+    let channel =
+        open_colored_channel(node2_addr, &node1_pubkey, NODE1_PEER_PORT, 250, &asset_id).await;
     assert_eq!(asset_balance(node2_addr, &asset_id).await, 50);
 
     let LNInvoiceResponse { invoice } = ln_invoice(node1_addr, &asset_id, 50, 900).await;

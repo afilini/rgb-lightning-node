@@ -26,7 +26,8 @@ async fn close_coop_nobtc_acceptor() {
     let node2_info = node_info(node2_addr).await;
     let node2_pubkey = node2_info.pubkey;
 
-    let channel = open_colored_channel(node1_addr, &node2_pubkey, NODE2_PEER_PORT, 600, &asset_id).await;
+    let channel =
+        open_colored_channel(node1_addr, &node2_pubkey, NODE2_PEER_PORT, 600, &asset_id).await;
     assert_eq!(asset_balance(node1_addr, &asset_id).await, 400);
 
     keysend(node1_addr, &node2_pubkey, &asset_id, 100).await;

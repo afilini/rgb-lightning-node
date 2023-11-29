@@ -11,16 +11,18 @@ use time::OffsetDateTime;
 use tracing_test::traced_test;
 
 use crate::routes::{
-    AddressResponse, Asset, AssetBalanceRequest, AssetBalanceResponse, BackupRequest, Channel,
-    CloseChannelRequest, ConnectPeerRequest, CreateUtxosRequest, DecodeLNInvoiceRequest,
-    DecodeLNInvoiceResponse, DecodeRGBInvoiceRequest, DecodeRGBInvoiceResponse,
-    DisconnectPeerRequest, EmptyResponse, HTLCStatus, InitRequest, InitResponse, InvoiceStatus,
-    InvoiceStatusRequest, InvoiceStatusResponse, IssueAssetRequest, IssueAssetResponse,
-    KeysendRequest, KeysendResponse, LNInvoiceRequest, LNInvoiceResponse, ListAssetsResponse,
-    ListChannelsResponse, ListPaymentsResponse, ListPeersResponse, ListUnspentsResponse,
-    NodeInfoResponse, OpenChannelResponse, Payment, Peer, RestoreRequest,
-    RgbInvoiceRequest, RgbInvoiceResponse, SendAssetRequest, SendAssetResponse, SendPaymentRequest,
-    SendPaymentResponse, UnlockRequest, Unspent, OpenColoredChannelRequest, OpenChannelRequest, MakerInitRequest, MakerInitSide, MakerInitResponse, TakerRequest, TakerResponse, MakerExecuteRequest,
+    AddressResponse, Asset, AssetBalanceRequest, AssetBalanceResponse, BackupRequest,
+    BtcBalanceResponse, Channel, CloseChannelRequest, ConnectPeerRequest, CreateUtxosRequest,
+    DecodeLNInvoiceRequest, DecodeLNInvoiceResponse, DecodeRGBInvoiceRequest,
+    DecodeRGBInvoiceResponse, DisconnectPeerRequest, EmptyResponse, HTLCStatus, InitRequest,
+    InitResponse, InvoiceStatus, InvoiceStatusRequest, InvoiceStatusResponse, IssueAssetRequest,
+    IssueAssetResponse, KeysendRequest, KeysendResponse, LNInvoiceRequest, LNInvoiceResponse,
+    ListAssetsResponse, ListChannelsResponse, ListPaymentsResponse, ListPeersResponse,
+    ListUnspentsResponse, MakerExecuteRequest, MakerInitRequest, MakerInitResponse, MakerInitSide,
+    NodeInfoResponse, OpenChannelRequest, OpenChannelResponse, OpenColoredChannelRequest, Payment,
+    Peer, RestoreRequest, RgbInvoiceRequest, RgbInvoiceResponse, SendAssetRequest,
+    SendAssetResponse, SendPaymentRequest, SendPaymentResponse, TakerRequest, TakerResponse,
+    UnlockRequest, Unspent,
 };
 use crate::utils::PROXY_ENDPOINT_REGTEST;
 
@@ -173,6 +175,21 @@ async fn start_node(
     unlock(node_address, password.clone()).await;
 
     (node_address, password)
+}
+
+async fn btc_balance(node_address: SocketAddr) -> u64 {
+    let res = reqwest::Client::new()
+        .get(format!("http://{}/btcbalance", node_address))
+        .send()
+        .await
+        .unwrap();
+    _check_response_is_ok(res)
+        .await
+        .json::<BtcBalanceResponse>()
+        .await
+        .unwrap()
+        .vanilla
+        .spendable
 }
 
 async fn asset_balance(node_address: SocketAddr, asset_id: &str) -> u64 {
@@ -826,7 +843,14 @@ async fn unlock(node_address: SocketAddr, password: String) {
         .unwrap();
 }
 
-async fn maker_init(node_address: SocketAddr, amount: u64, asset_id: &str, side: MakerInitSide, timeout_secs: u32, price_msats_per_token: u64) -> MakerInitResponse {
+async fn maker_init(
+    node_address: SocketAddr,
+    amount: u64,
+    asset_id: &str,
+    side: MakerInitSide,
+    timeout_secs: u32,
+    price_msats_per_token: u64,
+) -> MakerInitResponse {
     let payload = MakerInitRequest {
         amount,
         asset_id: asset_id.to_owned(),
@@ -848,9 +872,7 @@ async fn maker_init(node_address: SocketAddr, amount: u64, asset_id: &str, side:
 }
 
 async fn taker(node_address: SocketAddr, swapstring: String) -> TakerResponse {
-    let payload = TakerRequest {
-        swapstring
-    };
+    let payload = TakerRequest { swapstring };
     let res = reqwest::Client::new()
         .post(format!("http://{}/taker", node_address))
         .json(&payload)
@@ -864,7 +886,12 @@ async fn taker(node_address: SocketAddr, swapstring: String) -> TakerResponse {
         .unwrap()
 }
 
-async fn maker_execute(node_address: SocketAddr, swapstring: String, payment_secret: String, taker_pubkey: String) {
+async fn maker_execute(
+    node_address: SocketAddr,
+    swapstring: String,
+    payment_secret: String,
+    taker_pubkey: String,
+) {
     let payload = MakerExecuteRequest {
         swapstring,
         payment_secret,
@@ -1092,6 +1119,7 @@ mod backup_and_restore;
 mod close_coop_nobtc_acceptor;
 mod close_coop_other_side;
 mod close_coop_standard;
+mod close_coop_vanilla;
 mod close_coop_zero_balance;
 mod close_force_nobtc_acceptor;
 mod close_force_other_side;
@@ -1102,4 +1130,9 @@ mod open_after_double_send;
 mod payment;
 mod restart;
 mod send_receive;
-mod swaps;
+mod swap_roundtrip_buy;
+mod swap_roundtrip_fail_amount_maker;
+mod swap_roundtrip_fail_amount_taker;
+mod swap_roundtrip_fail_timeout;
+mod swap_roundtrip_fail_whitelist;
+mod swap_roundtrip_sell;

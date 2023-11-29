@@ -50,7 +50,8 @@ async fn close_coop_standard() {
     let peers = list_peers(node1_addr).await;
     assert!(peers.iter().any(|p| p.pubkey == node2_pubkey));
 
-    let channel = open_colored_channel(node1_addr, &node2_pubkey, NODE2_PEER_PORT, 600, &asset_id).await;
+    let channel =
+        open_colored_channel(node1_addr, &node2_pubkey, NODE2_PEER_PORT, 600, &asset_id).await;
     assert_eq!(asset_balance(node1_addr, &asset_id).await, 400);
 
     keysend(node1_addr, &node2_pubkey, &asset_id, 150).await;

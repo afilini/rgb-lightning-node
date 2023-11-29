@@ -3,8 +3,8 @@ use bdk::keys::bip39::Mnemonic;
 use bitcoin::secp256k1::PublicKey;
 use bitcoin::Network;
 use futures::Future;
-use lightning::ln::PaymentHash;
 use lightning::ln::msgs::SocketAddress;
+use lightning::ln::PaymentHash;
 use lightning::rgb_utils::{BITCOIN_NETWORK_FNAME, ELECTRUM_URL_FNAME};
 use lightning::{
     onion_message::OnionMessageContents,

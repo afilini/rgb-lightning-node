@@ -39,11 +39,13 @@ async fn multi_hop() {
     refresh_transfers(node1_addr).await;
     assert_eq!(asset_balance(node1_addr, &asset_id).await, 600);
 
-    let channel_12 = open_colored_channel(node1_addr, &node2_pubkey, NODE2_PEER_PORT, 500, &asset_id).await;
+    let channel_12 =
+        open_colored_channel(node1_addr, &node2_pubkey, NODE2_PEER_PORT, 500, &asset_id).await;
     assert_eq!(asset_balance(node1_addr, &asset_id).await, 100);
     assert_eq!(asset_balance(node2_addr, &asset_id).await, 400);
 
-    let channel_23 = open_colored_channel(node2_addr, &node3_pubkey, NODE3_PEER_PORT, 300, &asset_id).await;
+    let channel_23 =
+        open_colored_channel(node2_addr, &node3_pubkey, NODE3_PEER_PORT, 300, &asset_id).await;
     assert_eq!(asset_balance(node1_addr, &asset_id).await, 100);
 
     let LNInvoiceResponse { invoice } = ln_invoice(node3_addr, &asset_id, 50, 900).await;

@@ -1662,7 +1662,7 @@ pub(crate) async fn open_channel(
             )));
         }
 
-        if payload.push_msat < DUST_LIMIT_MSAT {
+        if payload.push_msat != 0 && payload.push_msat < DUST_LIMIT_MSAT {
             return Err(APIError::InvalidAmount(format!(
                 "Push amount must be equal or higher than the dust limit ({DUST_LIMIT_MSAT})"
             )));

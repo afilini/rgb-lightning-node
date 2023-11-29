@@ -18,9 +18,9 @@ use crate::routes::{
     InitResponse, InvoiceStatus, InvoiceStatusRequest, InvoiceStatusResponse, IssueAssetRequest,
     IssueAssetResponse, KeysendRequest, KeysendResponse, LNInvoiceRequest, LNInvoiceResponse,
     ListAssetsResponse, ListChannelsResponse, ListPaymentsResponse, ListPeersResponse,
-    ListUnspentsResponse, MakerExecuteRequest, MakerInitRequest, MakerInitResponse, MakerInitSide,
-    NodeInfoResponse, OpenChannelRequest, OpenChannelResponse, OpenColoredChannelRequest, Payment,
-    Peer, RestoreRequest, RgbInvoiceRequest, RgbInvoiceResponse, SendAssetRequest,
+    ListTradesResponse, ListUnspentsResponse, MakerExecuteRequest, MakerInitRequest,
+    MakerInitResponse, MakerInitSide, NodeInfoResponse, OpenChannelRequest, OpenChannelResponse,
+    Payment, Peer, RestoreRequest, RgbInvoiceRequest, RgbInvoiceResponse, SendAssetRequest,
     SendAssetResponse, SendPaymentRequest, SendPaymentResponse, TakerRequest, TakerResponse,
     UnlockRequest, Unspent,
 };
@@ -468,13 +468,13 @@ async fn ln_invoice(
 async fn keysend(
     node_address: SocketAddr,
     dest_pubkey: &str,
-    asset_id: &str,
-    asset_amount: u64,
+    asset_id: Option<String>,
+    asset_amount: Option<u64>,
 ) -> Payment {
     let payload = KeysendRequest {
         dest_pubkey: dest_pubkey.to_string(),
         amt_msat: 3000000,
-        asset_id: asset_id.to_string(),
+        asset_id,
         asset_amount,
     };
     let res = reqwest::Client::new()
@@ -528,17 +528,17 @@ async fn open_colored_channel(
     asset_id: &str,
 ) -> Channel {
     stop_mining();
-    let payload = OpenColoredChannelRequest {
+    let payload = OpenChannelRequest {
         peer_pubkey_and_addr: format!("{}@127.0.0.1:{}", dest_peer_pubkey, dest_peer_port),
         capacity_sat: 30010,
         push_msat: 2130000,
-        asset_amount,
-        asset_id: asset_id.to_string(),
+        asset_amount: Some(asset_amount),
+        asset_id: Some(asset_id.to_string()),
         public: true,
         with_anchors: true,
     };
     let res = reqwest::Client::new()
-        .post(format!("http://{}/opencoloredchannel", node_address))
+        .post(format!("http://{}/openchannel", node_address))
         .json(&payload)
         .send()
         .await
@@ -603,6 +603,8 @@ async fn open_channel(
         push_msat,
         public: true,
         with_anchors: true,
+        asset_amount: None,
+        asset_id: None,
     };
     let res = reqwest::Client::new()
         .post(format!("http://{}/openchannel", node_address))
@@ -710,6 +712,15 @@ async fn list_unspents(node_address: SocketAddr) -> Vec<Unspent> {
         .await
         .unwrap()
         .unspents
+}
+
+async fn list_trades(node_address: SocketAddr) -> ListTradesResponse {
+    let res = reqwest::Client::new()
+        .get(format!("http://{}/listtrades", node_address))
+        .send()
+        .await
+        .unwrap();
+    _check_response_is_ok(res).await.json().await.unwrap()
 }
 
 async fn lock(node_address: SocketAddr) {

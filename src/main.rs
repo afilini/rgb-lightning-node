@@ -31,10 +31,10 @@ use crate::ldk::stop_ldk;
 use crate::routes::{
     address, asset_balance, backup, btc_balance, change_password, close_channel, connect_peer,
     create_utxos, decode_ln_invoice, decode_rgb_invoice, disconnect_peer, init, invoice_status,
-    issue_asset, keysend, list_assets, list_channels, list_payments, list_peers, list_transactions,
-    list_transfers, list_unspents, ln_invoice, lock, maker_execute, maker_init, network_info,
-    node_info, open_channel, open_colored_channel, refresh_transfers, restore, rgb_invoice,
-    send_asset, send_btc, send_onion_message, send_payment, shutdown, sign_message, taker, unlock,
+    issue_asset, keysend, list_assets, list_channels, list_payments, list_peers, list_trades,
+    list_transactions, list_transfers, list_unspents, ln_invoice, lock, maker_execute, maker_init,
+    network_info, node_info, open_channel, refresh_transfers, restore, rgb_invoice, send_asset,
+    send_btc, send_onion_message, send_payment, shutdown, sign_message, taker, unlock,
 };
 use crate::utils::{start_daemon, AppState, LOGS_DIR};
 
@@ -99,6 +99,7 @@ pub(crate) async fn app(args: LdkUserInfo) -> Result<(Router, Arc<AppState>), Ap
         .route("/listchannels", get(list_channels))
         .route("/listpayments", get(list_payments))
         .route("/listpeers", get(list_peers))
+        .route("/listtrades", get(list_trades))
         .route("/listtransactions", get(list_transactions))
         .route("/listtransfers", post(list_transfers))
         .route("/listunspents", get(list_unspents))
@@ -108,7 +109,6 @@ pub(crate) async fn app(args: LdkUserInfo) -> Result<(Router, Arc<AppState>), Ap
         .route("/makerexecute", post(maker_execute))
         .route("/networkinfo", get(network_info))
         .route("/nodeinfo", get(node_info))
-        .route("/opencoloredchannel", post(open_colored_channel))
         .route("/openchannel", post(open_channel))
         .route("/refreshtransfers", post(refresh_transfers))
         .route("/restore", post(restore))

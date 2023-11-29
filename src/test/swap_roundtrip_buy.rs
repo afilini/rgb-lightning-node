@@ -36,6 +36,10 @@ async fn do_buy_swap() {
     let maker_init_response =
         maker_init(node1_addr, 10, &asset_id, MakerInitSide::Buy, 3600, 5000).await;
     let taker_response = taker(node2_addr, maker_init_response.swapstring.clone()).await;
+
+    dbg!(list_trades(node1_addr).await);
+    dbg!(list_trades(node2_addr).await);
+
     maker_execute(
         node1_addr,
         maker_init_response.swapstring,

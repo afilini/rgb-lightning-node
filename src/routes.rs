@@ -50,6 +50,7 @@ use tokio::sync::MutexGuard as TokioMutexGuard;
 use crate::backup::{do_backup, restore_backup};
 use crate::ldk::{start_ldk, stop_ldk, LdkBackgroundServices, MIN_CHANNEL_CONFIRMATIONS};
 use crate::rgb::get_bitcoin_network;
+use crate::swap::SwapType;
 use crate::utils::{
     check_already_initialized, check_password_strength, check_password_validity,
     encrypt_and_save_mnemonic, get_mnemonic_path, hex_str, hex_str_to_compressed_pubkey,
@@ -307,8 +308,8 @@ pub(crate) struct IssueAssetResponse {
 pub(crate) struct KeysendRequest {
     pub(crate) dest_pubkey: String,
     pub(crate) amt_msat: u64,
-    pub(crate) asset_id: String,
-    pub(crate) asset_amount: u64,
+    pub(crate) asset_id: Option<String>,
+    pub(crate) asset_amount: Option<u64>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -336,6 +337,21 @@ pub(crate) struct ListPaymentsResponse {
 #[derive(Deserialize, Serialize)]
 pub(crate) struct ListPeersResponse {
     pub(crate) peers: Vec<Peer>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub(crate) struct Trade {
+    pub(crate) amt_msat: u64,
+    pub(crate) amt_rgb: u64,
+    pub(crate) side: MakerInitSide,
+    pub(crate) asset_id: String,
+    pub(crate) payment_hash: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub(crate) struct ListTradesResponse {
+    pub(crate) maker: Vec<Trade>,
+    pub(crate) taker: Vec<Trade>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -378,7 +394,7 @@ pub(crate) struct MakerExecuteRequest {
     pub(crate) taker_pubkey: String,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub(crate) enum MakerInitSide {
     Buy,
     Sell,
@@ -416,21 +432,12 @@ pub(crate) struct NodeInfoResponse {
 }
 
 #[derive(Deserialize, Serialize)]
-pub(crate) struct OpenColoredChannelRequest {
-    pub(crate) peer_pubkey_and_addr: String,
-    pub(crate) capacity_sat: u64,
-    pub(crate) push_msat: u64,
-    pub(crate) asset_amount: u64,
-    pub(crate) asset_id: String,
-    pub(crate) public: bool,
-    pub(crate) with_anchors: bool,
-}
-
-#[derive(Deserialize, Serialize)]
 pub(crate) struct OpenChannelRequest {
     pub(crate) peer_pubkey_and_addr: String,
     pub(crate) capacity_sat: u64,
     pub(crate) push_msat: u64,
+    pub(crate) asset_amount: Option<u64>,
+    pub(crate) asset_id: Option<String>,
     pub(crate) public: bool,
     pub(crate) with_anchors: bool,
 }
@@ -1098,22 +1105,32 @@ pub(crate) async fn keysend(
             )));
         }
 
-        let contract_id = ContractId::from_str(&payload.asset_id)
-            .map_err(|_| APIError::InvalidAssetID(payload.asset_id))?;
-
         let payment_preimage =
             PaymentPreimage(unlocked_state.keys_manager.get_secure_random_bytes());
         let payment_hash_inner = Sha256::hash(&payment_preimage.0[..]).into_inner();
         let payment_id = PaymentId(payment_hash_inner);
         let payment_hash = PaymentHash(payment_hash_inner);
 
-        write_rgb_payment_info_file(
-            &PathBuf::from(&state.static_state.ldk_data_dir),
-            &payment_hash,
-            contract_id,
-            payload.asset_amount,
-            true,
-        );
+        match (payload.asset_id, payload.asset_amount) {
+            (Some(rgb_contract_id), Some(rgb_amount)) => {
+                let contract_id = ContractId::from_str(&rgb_contract_id)
+                    .map_err(|_| APIError::InvalidAssetID(rgb_contract_id))?;
+
+                write_rgb_payment_info_file(
+                    &PathBuf::from(&state.static_state.ldk_data_dir),
+                    &payment_hash,
+                    contract_id,
+                    rgb_amount,
+                    true,
+                );
+            }
+            (None, None) => {}
+            _ => {
+                return Err(APIError::InvalidArgument(
+                    "asset_id and asset_amount must be set concurrently".to_string(),
+                ));
+            }
+        }
 
         let route_params = RouteParameters::from_payment_params_and_value(
             PaymentParameters::for_keysend(dest_pubkey, 40, false),
@@ -1309,6 +1326,33 @@ pub(crate) async fn list_peers(
     }
 
     Ok(Json(ListPeersResponse { peers }))
+}
+
+pub(crate) async fn list_trades(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<ListTradesResponse>, APIError> {
+    let unlocked_state = state.check_unlocked().await?.clone().unwrap();
+
+    let map_trade =
+        |(payment_hash, (contract_id, swap_type)): (&PaymentHash, &(ContractId, SwapType))| Trade {
+            payment_hash: payment_hash.to_string(),
+            asset_id: contract_id.to_string(),
+            amt_msat: swap_type.amount_msats(),
+            amt_rgb: swap_type.amount_rgb(),
+            side: if swap_type.is_buy() {
+                MakerInitSide::Buy
+            } else {
+                MakerInitSide::Sell
+            },
+        };
+
+    let taker_trades = unlocked_state.taker_trades.lock().unwrap();
+    let maker_trades = unlocked_state.maker_trades.lock().unwrap();
+
+    Ok(Json(ListTradesResponse {
+        taker: taker_trades.iter().map(map_trade).collect(),
+        maker: maker_trades.iter().map(map_trade).collect(),
+    }))
 }
 
 pub(crate) async fn list_transactions(
@@ -1534,117 +1578,6 @@ pub(crate) async fn node_info(
     }))
 }
 
-pub(crate) async fn open_colored_channel(
-    State(state): State<Arc<AppState>>,
-    WithRejection(Json(payload), _): WithRejection<Json<OpenColoredChannelRequest>, APIError>,
-) -> Result<Json<OpenChannelResponse>, APIError> {
-    no_cancel(async move {
-        let unlocked_state = state.check_unlocked().await?.clone().unwrap();
-
-        let (peer_pubkey, peer_addr) = parse_peer_info(payload.peer_pubkey_and_addr.to_string())?;
-
-        let contract_id = ContractId::from_str(&payload.asset_id)
-            .map_err(|_| APIError::InvalidAssetID(payload.asset_id))?;
-
-        if payload.capacity_sat < OPENCHANNEL_MIN_SAT {
-            return Err(APIError::InvalidAmount(format!(
-                "Channel amount must be equal or higher than {OPENCHANNEL_MIN_SAT}"
-            )));
-        }
-        if payload.capacity_sat > OPENCHANNEL_MAX_SAT {
-            return Err(APIError::InvalidAmount(format!(
-                "Channel amount must be equal or less than {OPENCHANNEL_MAX_SAT}"
-            )));
-        }
-
-        if payload.push_msat < DUST_LIMIT_MSAT {
-            return Err(APIError::InvalidAmount(format!(
-                "Push amount must be equal or higher than the dust limit ({DUST_LIMIT_MSAT})"
-            )));
-        }
-
-        if payload.asset_amount < OPENCHANNEL_MIN_RGB_AMT {
-            return Err(APIError::InvalidAmount(format!(
-                "Channel RGB amount must be equal or higher than {OPENCHANNEL_MIN_RGB_AMT}"
-            )));
-        }
-
-        if !payload.with_anchors {
-            return Err(APIError::AnchorsRequired);
-        }
-
-        connect_peer_if_necessary(peer_pubkey, peer_addr, unlocked_state.peer_manager.clone())
-            .await?;
-
-        let balance = unlocked_state.rgb_get_asset_balance(contract_id)?;
-
-        let spendable_rgb_amount = balance.spendable;
-
-        if payload.asset_amount > spendable_rgb_amount {
-            return Err(APIError::InsufficientAssets(
-                spendable_rgb_amount,
-                payload.asset_amount,
-            ));
-        }
-
-        let config = UserConfig {
-            channel_handshake_limits: ChannelHandshakeLimits {
-                // lnd's max to_self_delay is 2016, so we want to be compatible.
-                their_to_self_delay: 2016,
-                ..Default::default()
-            },
-            channel_handshake_config: ChannelHandshakeConfig {
-                announced_channel: payload.public,
-                our_htlc_minimum_msat: HTLC_MIN_MSAT,
-                minimum_depth: MIN_CHANNEL_CONFIRMATIONS as u32,
-                negotiate_anchors_zero_fee_htlc_tx: payload.with_anchors,
-                ..Default::default()
-            },
-            ..Default::default()
-        };
-
-        let consignment_endpoint =
-            RgbTransport::from_str(&state.static_state.proxy_endpoint).unwrap();
-        let temporary_channel_id = unlocked_state
-            .channel_manager
-            .create_channel(
-                peer_pubkey,
-                payload.capacity_sat,
-                payload.push_msat,
-                0,
-                Some(config),
-                Some(consignment_endpoint),
-            )
-            .map_err(|e| APIError::FailedOpenChannel(format!("{:?}", e)))?;
-        tracing::info!("EVENT: initiated channel with peer {}", peer_pubkey);
-
-        let peer_data_path = format!(
-            "{}/channel_peer_data",
-            state.static_state.ldk_data_dir.clone()
-        );
-        let _ =
-            disk::persist_channel_peer(Path::new(&peer_data_path), &payload.peer_pubkey_and_addr);
-
-        let temporary_channel_id = temporary_channel_id.to_hex();
-        let channel_rgb_info_path = format!(
-            "{}/{}",
-            state.static_state.ldk_data_dir.clone(),
-            temporary_channel_id,
-        );
-        let rgb_info = RgbInfo {
-            contract_id,
-            local_rgb_amount: payload.asset_amount,
-            remote_rgb_amount: 0,
-        };
-        write_rgb_channel_info(&PathBuf::from(&channel_rgb_info_path), &rgb_info);
-
-        Ok(Json(OpenChannelResponse {
-            temporary_channel_id,
-        }))
-    })
-    .await
-}
-
 pub(crate) async fn open_channel(
     State(state): State<Arc<AppState>>,
     WithRejection(Json(payload), _): WithRejection<Json<OpenChannelRequest>, APIError>,
@@ -1653,6 +1586,25 @@ pub(crate) async fn open_channel(
         let unlocked_state = state.check_unlocked().await?.clone().unwrap();
 
         let (peer_pubkey, peer_addr) = parse_peer_info(payload.peer_pubkey_and_addr.to_string())?;
+
+        let colored_info = match (payload.asset_id, payload.asset_amount) {
+            (Some(_), Some(amt)) if amt < OPENCHANNEL_MIN_RGB_AMT => {
+                return Err(APIError::InvalidAmount(format!(
+                    "Channel RGB amount must be equal or higher than {OPENCHANNEL_MIN_RGB_AMT}"
+                )));
+            }
+            (Some(asset), Some(amt)) => {
+                let asset =
+                    ContractId::from_str(&asset).map_err(|_| APIError::InvalidAssetID(asset))?;
+                Some((asset, amt))
+            }
+            (None, None) => None,
+            _ => {
+                return Err(APIError::InvalidArgument(
+                    "asset_id and asset_amount must be set concurrently".to_string(),
+                ));
+            }
+        };
 
         if payload.capacity_sat < OPENCHANNEL_MIN_SAT {
             return Err(APIError::InvalidAmount(format!(
@@ -1694,6 +1646,18 @@ pub(crate) async fn open_channel(
             ..Default::default()
         };
 
+        let consignment_endpoint = if let Some(rgb) = &colored_info {
+            let balance = unlocked_state.rgb_get_asset_balance(rgb.0)?;
+            let spendable_rgb_amount = balance.spendable;
+
+            if rgb.1 > spendable_rgb_amount {
+                return Err(APIError::InsufficientAssets(spendable_rgb_amount, rgb.1));
+            }
+
+            Some(RgbTransport::from_str(&state.static_state.proxy_endpoint).unwrap())
+        } else {
+            None
+        };
         let temporary_channel_id = unlocked_state
             .channel_manager
             .create_channel(
@@ -1702,12 +1666,35 @@ pub(crate) async fn open_channel(
                 payload.push_msat,
                 0,
                 Some(config),
-                None,
+                consignment_endpoint,
             )
             .map_err(|e| APIError::FailedOpenChannel(format!("{:?}", e)))?;
+        let temporary_channel_id = temporary_channel_id.to_hex();
         tracing::info!("EVENT: initiated channel with peer {}", peer_pubkey);
 
-        let temporary_channel_id = temporary_channel_id.to_hex();
+        if let Some(rgb) = &colored_info {
+            let peer_data_path = format!(
+                "{}/channel_peer_data",
+                state.static_state.ldk_data_dir.clone()
+            );
+            let _ = disk::persist_channel_peer(
+                Path::new(&peer_data_path),
+                &payload.peer_pubkey_and_addr,
+            );
+
+            let channel_rgb_info_path = format!(
+                "{}/{}",
+                state.static_state.ldk_data_dir.clone(),
+                temporary_channel_id,
+            );
+            let rgb_info = RgbInfo {
+                contract_id: rgb.0,
+                local_rgb_amount: rgb.1,
+                remote_rgb_amount: 0,
+            };
+            write_rgb_channel_info(&PathBuf::from(&channel_rgb_info_path), &rgb_info);
+        }
+
         Ok(Json(OpenChannelResponse {
             temporary_channel_id,
         }))

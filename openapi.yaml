@@ -353,6 +353,19 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ListTransactionsResponse'
+  /listtrades:
+    get:
+      tags:
+        - Swaps
+      summary: List trades
+      description: List the whitelisted trades
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListTradesResponse'
   /listtransfers:
     post:
       tags:
@@ -477,30 +490,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/NodeInfoResponse'
-  /opencoloredchannel:
-    post:
-      tags:
-        - Channels
-      summary: Open a channel
-      description: Open a new LN RGB channel
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/OpenColoredChannelRequest'
-      responses:
-        '200':
-          description: Successful operation
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OpenChannelResponse'
   /openchannel:
     post:
       tags:
         - Channels
       summary: Open a channel
-      description: Open a new LN BTC channel
+      description: Open a new LN BTC or RGB channel (if both asset_id and asset_amount are specified)
       requestBody:
         content:
           application/json:
@@ -1081,6 +1076,13 @@ components:
           type: array
           items:
               $ref: '#/components/schemas/Transaction'
+    ListTradesResponse:
+      type: object
+      properties:
+        transactions:
+          type: array
+          items:
+              $ref: '#/components/schemas/Trade'
     ListTransfersRequest:
       type: object
       properties:
@@ -1192,7 +1194,7 @@ components:
         num_peers:
           type: integer
           example: 1
-    OpenColoredChannelRequest:
+    OpenChannelRequest:
       type: object
       properties:
         peer_pubkey_and_addr:
@@ -1210,24 +1212,6 @@ components:
         asset_id:
           type: string
           example: rgb:2dkSTbr-jFhznbPmo-TQafzswCN-av4gTsJjX-ttx6CNou5-M98k8Zd
-        public:
-          type: boolean
-          example: true
-        with_anchors:
-          type: boolean
-          example: true
-    OpenChannelRequest:
-      type: object
-      properties:
-        peer_pubkey_and_addr:
-          type: string
-          example: 03b79a4bc1ec365524b4fab9a39eb133753646babb5a1da5c4bc94c53110b7795d@localhost:9736
-        capacity_sat:
-          type: integer
-          example: 30010
-        push_msat:
-          type: integer
-          example: 1394000
         public:
           type: boolean
           example: true
@@ -1410,6 +1394,26 @@ components:
         our_pubkey:
           type: string
           example: 03b79a4bc1ec365524b4fab9a39eb133753646babb5a1da5c4bc94c53110b7795d
+    Trade:
+      type: object
+      properties:
+        payment_hash:
+          type: string
+          example: 7c2c95b9c2aa0a7d140495b664de7973b76561de833f0dd84def3efa08941664
+        amt_msat:
+          type: integer
+          example: 3000000
+        amt_rgb:
+          type: integer
+          example: 10
+        asset_id:
+          type: string
+          example: rgb:2dkSTbr-jFhznbPmo-TQafzswCN-av4gTsJjX-ttx6CNou5-M98k8Zd
+        side:
+          type: string
+          enum:
+            - Buy
+            - Sell
     Transaction:
       type: object
       properties:

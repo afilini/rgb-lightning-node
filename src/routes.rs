@@ -1578,7 +1578,10 @@ pub(crate) async fn open_colored_channel(
         let spendable_rgb_amount = balance.spendable;
 
         if payload.asset_amount > spendable_rgb_amount {
-            return Err(APIError::InsufficientAssets(spendable_rgb_amount));
+            return Err(APIError::InsufficientAssets(
+                spendable_rgb_amount,
+                payload.asset_amount,
+            ));
         }
 
         let config = UserConfig {
@@ -2108,7 +2111,7 @@ pub(crate) async fn maker_init(
         if swaptype.is_buy() {
             let max_balance = get_max_balance(contract_id, &ldk_data_dir_path, unlocked_state.channel_manager.list_channels().iter());
             if payload.amount > max_balance {
-                return Err(APIError::InsufficientAssets(payload.amount));
+                return Err(APIError::InsufficientAssets(max_balance, payload.amount));
             }
         }
 
@@ -2158,7 +2161,10 @@ pub(crate) async fn taker(
         if !swapstring.swap_type.is_buy() {
             let max_balance = get_max_balance(swapstring.asset_id, &ldk_data_dir_path, unlocked_state.channel_manager.list_channels().iter());
             if swapstring.swap_type.amount_rgb() > max_balance {
-                return Err(APIError::InsufficientAssets(swapstring.swap_type.amount_rgb()));
+                return Err(APIError::InsufficientAssets(
+                    max_balance,
+                    swapstring.swap_type.amount_rgb(),
+                ));
             }
         }
 

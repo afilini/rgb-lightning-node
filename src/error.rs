@@ -55,8 +55,8 @@ pub enum APIError {
     #[error("Failed to start LDK: {0}")]
     FailedStartingLDK(String),
 
-    #[error("Not enough assets, available: {0}")]
-    InsufficientAssets(u64),
+    #[error("Not enough assets, available: {0}, needed: {1}")]
+    InsufficientAssets(u64, u64),
 
     #[error("Not enough funds, call getaddress and send {0} satoshis")]
     InsufficientFunds(u64),
@@ -213,7 +213,7 @@ impl IntoResponse for APIError {
             APIError::AllocationsAlreadyAvailable
             | APIError::AlreadyInitialized
             | APIError::ChangingState
-            | APIError::InsufficientAssets(_)
+            | APIError::InsufficientAssets(_, _)
             | APIError::InsufficientFunds(_)
             | APIError::LockedNode
             | APIError::NoAvailableUtxos

@@ -37,8 +37,12 @@ async fn do_buy_swap() {
         maker_init(node1_addr, 10, &asset_id, MakerInitSide::Buy, 3600, 5000).await;
     let taker_response = taker(node2_addr, maker_init_response.swapstring.clone()).await;
 
-    dbg!(list_trades(node1_addr).await);
-    dbg!(list_trades(node2_addr).await);
+    let node1_trades = list_trades(node1_addr).await;
+    assert!(node1_trades.taker.is_empty());
+    assert_eq!(node1_trades.maker.len(), 1);
+    let node2_trades = list_trades(node2_addr).await;
+    assert!(node2_trades.maker.is_empty());
+    assert_eq!(node2_trades.taker.len(), 1);
 
     maker_execute(
         node1_addr,

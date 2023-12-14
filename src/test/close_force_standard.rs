@@ -33,8 +33,22 @@ async fn close_force_standard() {
         open_colored_channel(node1_addr, &node2_pubkey, NODE2_PEER_PORT, 600, &asset_id).await;
     assert_eq!(asset_balance(node1_addr, &asset_id).await, 400);
 
-    keysend(node1_addr, &node2_pubkey, Some(asset_id.clone()), Some(150)).await;
-    keysend(node2_addr, &node1_pubkey, Some(asset_id.clone()), Some(50)).await;
+    keysend(
+        node1_addr,
+        &node2_pubkey,
+        None,
+        Some(asset_id.clone()),
+        Some(150),
+    )
+    .await;
+    keysend(
+        node2_addr,
+        &node1_pubkey,
+        None,
+        Some(asset_id.clone()),
+        Some(50),
+    )
+    .await;
 
     close_channel(node1_addr, &channel.channel_id, &node2_pubkey, true).await;
     wait_for_balance(node1_addr, &asset_id, 900).await;

@@ -47,26 +47,25 @@ async fn close_coop_vanilla() {
     let peers = list_peers(node1_addr).await;
     assert!(peers.iter().any(|p| p.pubkey == node2_pubkey));
 
-    let channel = open_channel(node1_addr, &node2_pubkey, NODE2_PEER_PORT, 600_000, 0).await;
-    let node1_balance = btc_balance(node1_addr).await;
+    let channel = open_channel(
+        node1_addr,
+        &node2_pubkey,
+        NODE2_PEER_PORT,
+        600_000,
+        300_000_000,
+    )
+    .await;
+    keysend(node1_addr, &node2_pubkey, Some(10_000_000), None, None).await;
+    keysend(node2_addr, &node1_pubkey, Some(10_000_000), None, None).await;
+    assert_eq!(list_payments(node1_addr).await.len(), 2);
+    assert_eq!(list_payments(node2_addr).await.len(), 2);
 
-    //let recipient_id = ln_invoice(node3_addr, None).await.recipient_id;
-    // TODO: keysend!!
-    // TODO: send payment
-
-    /*
-    // keysend(node1_addr, &node2_pubkey, &asset_id, 150).await;
-    // keysend(node2_addr, &node1_pubkey, &asset_id, 50).await;
-
-    // let recipient_id = rgb_invoice(node3_addr, None).await.recipient_id;
-    // send_asset(node1_addr, &asset_id, 10, recipient_id).await;
-    // mine(false);
-    // refresh_transfers(node3_addr).await;
-    // refresh_transfers(node3_addr).await;
-    // refresh_transfers(node1_addr).await;
-    // assert_eq!(asset_balance(node1_addr, &asset_id).await, 390);
-    // assert_eq!(asset_balance(node3_addr, &asset_id).await, 10);
-    */
+    let invoice = ln_invoice(node1_addr, Some(50000000), None, None, 900)
+        .await
+        .invoice;
+    let _ = send_payment(node2_addr, invoice).await;
+    assert_eq!(list_payments(node1_addr).await.len(), 3);
+    assert_eq!(list_payments(node2_addr).await.len(), 3);
 
     close_channel(node1_addr, &channel.channel_id, &node2_pubkey, false).await;
 }

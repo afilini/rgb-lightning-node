@@ -442,15 +442,17 @@ async fn list_peers(node_address: SocketAddr) -> Vec<Peer> {
 
 async fn ln_invoice(
     node_address: SocketAddr,
-    asset_id: &str,
-    asset_amount: u64,
+    amt_msat: Option<u64>,
+    asset_id: Option<&str>,
+    asset_amount: Option<u64>,
     expiry_sec: u32,
 ) -> LNInvoiceResponse {
+    let amt_msat = amt_msat.unwrap_or(3000000);
     let payload = LNInvoiceRequest {
-        amt_msat: Some(3000000),
+        amt_msat: Some(amt_msat),
         expiry_sec,
-        asset_id: Some(asset_id.to_string()),
-        asset_amount: Some(asset_amount),
+        asset_id: asset_id.map(|a| a.to_string()),
+        asset_amount,
     };
     let res = reqwest::Client::new()
         .post(format!("http://{}/lninvoice", node_address))
@@ -468,12 +470,15 @@ async fn ln_invoice(
 async fn keysend(
     node_address: SocketAddr,
     dest_pubkey: &str,
+    amt_msat: Option<u64>,
     asset_id: Option<String>,
     asset_amount: Option<u64>,
 ) -> Payment {
+    // Use the RGB default if not provided
+    let amt_msat = amt_msat.unwrap_or(3000000);
     let payload = KeysendRequest {
         dest_pubkey: dest_pubkey.to_string(),
-        amt_msat: 3000000,
+        amt_msat,
         asset_id,
         asset_amount,
     };
@@ -527,10 +532,29 @@ async fn open_colored_channel(
     asset_amount: u64,
     asset_id: &str,
 ) -> Channel {
+    open_colored_channel_custom_btc_amount(
+        node_address,
+        dest_peer_pubkey,
+        dest_peer_port,
+        asset_amount,
+        asset_id,
+        30010,
+    )
+    .await
+}
+
+async fn open_colored_channel_custom_btc_amount(
+    node_address: SocketAddr,
+    dest_peer_pubkey: &str,
+    dest_peer_port: u16,
+    asset_amount: u64,
+    asset_id: &str,
+    btc_amount: u64,
+) -> Channel {
     stop_mining();
     let payload = OpenChannelRequest {
         peer_pubkey_and_addr: format!("{}@127.0.0.1:{}", dest_peer_pubkey, dest_peer_port),
-        capacity_sat: 30010,
+        capacity_sat: btc_amount,
         push_msat: 2130000,
         asset_amount: Some(asset_amount),
         asset_id: Some(asset_id.to_string()),
@@ -736,6 +760,57 @@ async fn lock(node_address: SocketAddr) {
         .unwrap();
 }
 
+async fn maker_execute(
+    node_address: SocketAddr,
+    swapstring: String,
+    payment_secret: String,
+    taker_pubkey: String,
+) {
+    let payload = MakerExecuteRequest {
+        swapstring,
+        payment_secret,
+        taker_pubkey,
+    };
+    let res = reqwest::Client::new()
+        .post(format!("http://{}/makerexecute", node_address))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+    let _ = _check_response_is_ok(res)
+        .await
+        .json::<EmptyResponse>()
+        .await;
+}
+
+async fn maker_init(
+    node_address: SocketAddr,
+    amount: u64,
+    asset_id: &str,
+    side: MakerInitSide,
+    timeout_secs: u32,
+    price_msats_per_token: u64,
+) -> MakerInitResponse {
+    let payload = MakerInitRequest {
+        amount,
+        asset_id: asset_id.to_owned(),
+        side,
+        timeout_secs,
+        price_msats_per_token,
+    };
+    let res = reqwest::Client::new()
+        .post(format!("http://{}/makerinit", node_address))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+    _check_response_is_ok(res)
+        .await
+        .json::<MakerInitResponse>()
+        .await
+        .unwrap()
+}
+
 async fn rgb_invoice(node_address: SocketAddr, asset_id: Option<String>) -> RgbInvoiceResponse {
     let payload = RgbInvoiceRequest {
         min_confirmations: 1,
@@ -839,49 +914,6 @@ async fn send_payment(node_address: SocketAddr, invoice: String) -> Payment {
     }
 }
 
-async fn unlock(node_address: SocketAddr, password: String) {
-    let payload = UnlockRequest { password };
-    let res = reqwest::Client::new()
-        .post(format!("http://{}/unlock", node_address))
-        .json(&payload)
-        .send()
-        .await
-        .unwrap();
-    _check_response_is_ok(res)
-        .await
-        .json::<EmptyResponse>()
-        .await
-        .unwrap();
-}
-
-async fn maker_init(
-    node_address: SocketAddr,
-    amount: u64,
-    asset_id: &str,
-    side: MakerInitSide,
-    timeout_secs: u32,
-    price_msats_per_token: u64,
-) -> MakerInitResponse {
-    let payload = MakerInitRequest {
-        amount,
-        asset_id: asset_id.to_owned(),
-        side,
-        timeout_secs,
-        price_msats_per_token,
-    };
-    let res = reqwest::Client::new()
-        .post(format!("http://{}/makerinit", node_address))
-        .json(&payload)
-        .send()
-        .await
-        .unwrap();
-    _check_response_is_ok(res)
-        .await
-        .json::<MakerInitResponse>()
-        .await
-        .unwrap()
-}
-
 async fn taker(node_address: SocketAddr, swapstring: String) -> TakerResponse {
     let payload = TakerRequest { swapstring };
     let res = reqwest::Client::new()
@@ -897,27 +929,19 @@ async fn taker(node_address: SocketAddr, swapstring: String) -> TakerResponse {
         .unwrap()
 }
 
-async fn maker_execute(
-    node_address: SocketAddr,
-    swapstring: String,
-    payment_secret: String,
-    taker_pubkey: String,
-) {
-    let payload = MakerExecuteRequest {
-        swapstring,
-        payment_secret,
-        taker_pubkey,
-    };
+async fn unlock(node_address: SocketAddr, password: String) {
+    let payload = UnlockRequest { password };
     let res = reqwest::Client::new()
-        .post(format!("http://{}/makerexecute", node_address))
+        .post(format!("http://{}/unlock", node_address))
         .json(&payload)
         .send()
         .await
         .unwrap();
-    let _ = _check_response_is_ok(res)
+    _check_response_is_ok(res)
         .await
         .json::<EmptyResponse>()
-        .await;
+        .await
+        .unwrap();
 }
 
 async fn wait_for_balance(node_address: SocketAddr, asset_id: &str, expected_balance: u64) {
@@ -1146,4 +1170,6 @@ mod swap_roundtrip_fail_amount_maker;
 mod swap_roundtrip_fail_amount_taker;
 mod swap_roundtrip_fail_timeout;
 mod swap_roundtrip_fail_whitelist;
+mod swap_roundtrip_multihop_buy;
+mod swap_roundtrip_multihop_sell;
 mod swap_roundtrip_sell;

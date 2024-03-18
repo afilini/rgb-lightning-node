@@ -1585,7 +1585,7 @@ pub(crate) async fn maker_execute(
             taker_pk,
             unlocked_state.channel_manager.get_our_node_id(),
             if swap.is_from_btc() {
-                Some(swap.qty_from)
+                Some(swap.qty_from + HTLC_MIN_MSAT)
             } else {
                 Some(HTLC_MIN_MSAT)
             },
